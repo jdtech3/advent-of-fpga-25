@@ -1,6 +1,9 @@
+# OCaml
 _build
 *.exe
 *.install
 *.merlin
 _opam
 
+# Advent of Code
+**/test/input.txt
