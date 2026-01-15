@@ -1,4 +1,5 @@
 _build
+*.exe
 *.install
 *.merlin
 _opam

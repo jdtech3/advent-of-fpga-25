@@ -2,6 +2,7 @@ open! Core
 open! Hardcaml
 open! Hardcaml_waveterm
 open! Hardcaml_test_harness
+open! Re
 module Range_finder = Hardcaml_demo_project.Range_finder
 module Harness = Cyclesim_harness.Make (Range_finder.I) (Range_finder.O)
 
@@ -48,12 +49,13 @@ let simple_testbench (sim : Harness.Sim.t) =
 (* The [waves_config] argument to [Harness.run] determines where and how to save waveforms
    for viewing later with a waveform viewer. The commented examples below show how to save
    a waveterm file or a VCD file. *)
-let waves_config = Waves_config.no_waves
+(* let waves_config = Waves_config.no_waves *)
 
-(* let waves_config = *)
-(*   Waves_config.to_directory "/tmp/" *)
-(* |> Waves_config.as_wavefile_format ~format:Hardcamlwaveform *)
-(* ;; *)
+
+let waves_config =
+  Waves_config.to_directory "/tmp/"
+|> Waves_config.as_wavefile_format ~format:Hardcamlwaveform
+;;
 
 (* let waves_config = *)
 (*   Waves_config.to_directory "/tmp/" *)
@@ -73,7 +75,7 @@ let%expect_test "Simple test with printing waveforms directly" =
   let display_rules =
     [ Display_rule.port_name_matches
         ~wave_format:(Bit_or Unsigned_int)
-        (Glob "range_finder*")
+        (Re.compile (Re.Glob.glob "range_finder*"))
     ]
   in
   Harness.run_advanced
