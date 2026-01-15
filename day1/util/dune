@@ -1,0 +1,4 @@
+; Util scripts
+(executable 
+ (name input_size)
+ (libraries core))
