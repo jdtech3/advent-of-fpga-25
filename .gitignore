@@ -1,6 +1,7 @@
 # OCaml
 _build
 *.exe
+*.bc
 *.install
 *.merlin
 _opam
