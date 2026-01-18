@@ -3,9 +3,9 @@ open! Hardcaml
 open! Signal
 
 (* Bit widths *)
-let in_bits = 11        (* max: 1024 (1 bit for L/R) *)
+let in_bits = 17        (* max: 65536 (1 bit for L/R) *)
 let out_bits = 16       (* max: 65536 *)
-let _counter_bits = 16  (* -32768 ~ 32767 *)
+let _counter_bits = 16  (* max: 65535 *)
 
 (* In *)
 module I = struct
@@ -28,7 +28,7 @@ end
 
 (* FSM *)
 module States = struct
-  type t = IDLE | INPUT | DIVIDE | OUTPUT
+  type t = IDLE | INPUT | DIVIDE | CHECK_OVERFLOW | CHECK_DONE | OUTPUT
   [@@deriving sexp_of, compare ~localize, enumerate]
 end
 
@@ -41,14 +41,12 @@ let create scope ({ clk; rst; start; data_in } : _ I.t) : _ O.t =
   let%hw_var rot = Variable.reg spec ~width:_counter_bits in
   let%hw_var direction = Variable.reg spec ~width:1 in
   let%hw_var value = Variable.reg spec ~width:(in_bits-1) in
-  let%hw_var div_q = Variable.reg spec ~width:9 in            (* size can be optimized later *)
+  let%hw_var div_q = Variable.reg spec ~width:out_bits in     (* size can be optimized later *)
   let%hw_var div_r = Variable.reg spec ~width:out_bits in
   let%hw_var div_i = Variable.reg spec ~width:out_bits in
   
   let%hw_var ans = Variable.reg spec ~width:out_bits in
   let ans_valid = Variable.wire ~default:gnd () in
-  
-  (* let mux9 ~sel ~a ~b ~c ~d ~e ~f ~g ~h ~i = mux sel [a; b; c; d; e; f; g; h; i] in *)
 
   compile [
     fsm.switch [
@@ -63,31 +61,40 @@ let create scope ({ clk; rst; start; data_in } : _ I.t) : _ O.t =
       (INPUT, [
         when_ data_in.valid [
           (* Clear division regs *)
-          div_q <-- zero 9;
+          div_q <-- zero out_bits;
           div_r <-- zero out_bits;
-          div_i <--. 9;   (* -1 for L/R bit, -1 because algo *)
+          div_i <--. 15;   (* -1 for L/R bit, -1 because algo *)
 
           (* Capture input *)
-          direction <-- data_in.value.:[10, 10];
-          value <-- data_in.value.:[9, 0];
+          direction <-- data_in.value.:[16, 16];
+          value <-- data_in.value.:[15, 0];
 
           fsm.set_next DIVIDE;
         ]
       ]);
       (DIVIDE, [
         (* Implements div_r <<= 1 and div_r[0] = value[i] *)
-        div_r <-- (sll div_r.value ~by:1 |: (zero (out_bits-(in_bits-1)) @: ((log_shift value.value ~f:srl ~by:div_i.value) &:. 1)));
+        div_r <-- (sll div_r.value ~by:1 |: ((log_shift value.value ~f:srl ~by:div_i.value) &:. 1));
+        fsm.set_next CHECK_OVERFLOW
+      ]);
+      (CHECK_OVERFLOW, [
         when_ (div_r.value >=:. 100) [
           div_r <-- div_r.value -:. 100;
-          div_q <-- (div_q.value |: (log_shift (zero 9 |:. 1) ~f:sll ~by:div_i.value))  (* Implements div_q[i] = 1 *)
+          div_q <-- (div_q.value |: (log_shift ((zero out_bits) |:. 1) ~f:sll ~by:div_i.value))  (* Implements div_q[i] = 1 *)
         ];
-        when_ (div_i.value ==:. 0) [
+        fsm.set_next CHECK_DONE
+      ]);
+      (CHECK_DONE, [
+        if_ (div_i.value ==:. 0) [
           rot <-- mux2 (direction.value)
-                       (mux2 (div_r.value >: rot.value)          ((rot.value +:. 100) -: div_r.value) (rot.value -: div_r.value))
-                       (mux2 ((div_r.value +: rot.value) >:. 99) ((rot.value +: div_r.value) -:. 100) (rot.value +: div_r.value));
+                       (mux2 ((div_r.value +: rot.value) >:. 99) ((rot.value +: div_r.value) -:. 100) (rot.value +: div_r.value))
+                       (mux2 (div_r.value >: rot.value)          ((rot.value +:. 100) -: div_r.value) (rot.value -: div_r.value));
           fsm.set_next OUTPUT
-        ];
-        div_i <-- div_i.value -:. 1;
+        ]
+        [
+          div_i <-- div_i.value -:. 1;
+          fsm.set_next DIVIDE
+        ]
       ]);
       (OUTPUT, [
         when_ (rot.value ==:. 0) [

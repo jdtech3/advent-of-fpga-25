@@ -16,7 +16,7 @@ let max_val acc s =
 let () =
   Arg.parse [] anon_fun usage_msg;
   print_string "Input file: ";
-  if not (phys_equal !file "") then 
+  if not (String.equal !file "") then 
     print_endline !file 
   else 
     (print_endline usage_msg; exit 1);

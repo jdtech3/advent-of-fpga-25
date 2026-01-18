@@ -1,6 +1,6 @@
 (library
- (name hardcaml_demo_project_test)
- (libraries core hardcaml hardcaml_demo_project hardcaml_test_harness
+ (name aoc_day1_test)
+ (libraries core hardcaml aoc_day1 hardcaml_test_harness
    hardcaml_waveterm re)
  (preprocess
   (pps ppx_hardcaml ppx_jane))
